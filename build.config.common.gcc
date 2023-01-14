@@ -1,0 +1,17 @@
+KMI_GENERATION=2
+
+DEPMOD=depmod
+BUILDTOOLS_PREBUILT_BIN=build/build-tools/path/linux-x86
+
+KCFLAGS="${KCFLAGS} -D__ANDROID_COMMON_KERNEL__"
+STOP_SHIP_TRACEPRINTK=1
+IN_KERNEL_MODULES=1
+DO_NOT_STRIP_MODULES=1
+
+PRE_DEFCONFIG_CMDS="update_localversion"
+function update_localversion() {
+    # Set localversion by reading version file
+    VERSION=$(grep ver= ${KERNEL_DIR}/version | cut -d= -f2)
+    ${KERNEL_DIR}/scripts/config --file ${KERNEL_DIR}/arch/arm64/configs/neternels_defconfig \
+    --set-str CONFIG_LOCALVERSION "-NetErnels-${VERSION}"
+}
