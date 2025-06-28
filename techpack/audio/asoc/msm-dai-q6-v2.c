@@ -5060,11 +5060,10 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 		&mi2s_dai_data->rx_dai : &mi2s_dai_data->tx_dai);
 	struct msm_dai_q6_dai_data *dai_data = &mi2s_dai_config->mi2s_dai_data;
 	struct afe_param_id_i2s_cfg *i2s = &dai_data->port_config.i2s;
-#ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
-	u16 port_id = 0;
-#endif
 
 #ifdef CONFIG_SND_SOC_TFA9874_FOR_DAVI
+	u16 port_id = 0;
+
 	if (msm_mi2s_get_port_id(dai->id, substream->stream,
 				 &port_id) != 0) {
 		dev_err(dai->dev, "%s: Invalid Port ID 0x%x\n",
@@ -5072,7 +5071,6 @@ static int msm_dai_q6_mi2s_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 #endif
-
 	dai_data->channels = params_channels(params);
 	switch (dai_data->channels) {
 	case 15:
@@ -8330,11 +8328,7 @@ static int msm_dai_q6_tdm_prepare(struct snd_pcm_substream *substream,
 			 * if only one port, don't do group enable as there
 			 * is no group need for only one port
 			 */
-#ifdef CONFIG_MACH_XIAOMI_NABU
-			if (dai_data->num_group_ports >= 1) {
-#else
 			if (dai_data->num_group_ports > 1) {
-#endif
 				rc = afe_port_group_enable(group_id,
 					&dai_data->group_cfg, true);
 				if (rc < 0) {
