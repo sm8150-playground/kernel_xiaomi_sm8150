@@ -1,147 +1,116 @@
 #!/bin/bash
-set -x
+kernel_dir="${PWD}"
+CCACHE=$(command -v ccache)
+objdir="${kernel_dir}/out"
+anykernel=$HOME/anykernel
+builddir="${kernel_dir}/build"
+ZIMAGE=$kernel_dir/out/arch/arm64/boot/Image
+TC_DIR=$HOME/tc
+CLANG_DIR=$HOME/tc/r536225/
+export CONFIG_FILE="vayu_defconfig"
+export ARCH="arm64"
+export KBUILD_BUILD_HOST=resona
+export KBUILD_BUILD_USER=root
+export PATH="$CLANG_DIR/bin:$PATH"
 
-tg_sendDocument() {
-    curl "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendDocument" \
-    -F chat_id="-$TG_CHAT_ID" -F document=@"$1" -F caption="$2" &> /dev/null
-}
-
-tg_sendMessage() {
-    curl "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-    -F chat_id="-$TG_CHAT_ID" -F text="$1" -F parse_mode="Markdown" &> /dev/null
-}
-
-kmake() {
-	MAKEOPTS="$MAKEOPTS -j$(nproc) O=out ARCH=arm64 CROSS_COMPILE=$CROSS/$PRE_64- CROSS_COMPILE_ARM32=$CROSSCOMPAT/$PRE_32- CROSS_COMPILE_COMPAT=$CROSSCOMPAT/$PRE_32-"
-	env PATH="$CROSS:$CROSSCOMPAT:$PATH" make $MAKEOPTS CC="$CCACHE${CROSS}/$CC_CHOICE" "$@"
-}
-
-kzip() {
-	[ ! -d out/ak3 ] && git clone --depth=1 https://github.com/osm0sis/AnyKernel3 out/ak3
-	echo -e "
-	# AnyKernel3 Ramdisk Mod Script
-	# osm0sis @ xda-developers
-	properties() { '
-	kernel.string=$BLDHST
-	device.name1=$DEVICE
-	do.devicecheck=1
-	do.modules=0
-	do.systemless=0
-	do.cleanup=1
-	do.cleanuponabort=0
-	'; }
-	block=/dev/block/bootdevice/by-name/boot;
-	is_slot_device=0;
-	ramdisk_compression=auto;
-	patch_vbmeta_flag=auto;
-	. tools/ak3-core.sh;
-	set_perm_recursive 0 0 755 644 \$ramdisk/*;
-	set_perm_recursive 0 0 750 750 \$ramdisk/init* \$ramdisk/sbin;
-	dump_boot;
-	if [ -d \$ramdisk/overlay ]; then
-		rm -rf \$ramdisk/overlay;
-	fi;
-	write_boot;
-	" > out/ak3/anykernel.sh && sed -i "s/\t//g;1d" out/ak3/anykernel.sh
-	[ -f out/arch/arm64/boot/Image ] && cp out/arch/arm64/boot/Image out/ak3
-	[ -f out/arch/arm64/boot/dtb.img ] && cp out/arch/arm64/boot/dtb.img out/ak3/dtb
-	[ -f out/arch/arm64/boot/dtbo.img ] && cp out/arch/arm64/boot/dtbo.img out/ak3
-	mkdir -p out/ak3/vendor_ramdisk out/ak3/vendor_patch
-	ZIP_PREFIX_KVER=$(grep Linux out/.config | cut -f 3 -d " ")
-	ZIP_POSTFIX_DATE=$(date +%d-%h-%Y-%R:%S | sed "s/:/./g")
-	ZIP_PREFIX_STR="$BLDHST-$DEVICE"
-	ZIP_FMT=${ZIP_PREFIX_STR}_"${ZIP_PREFIX_KVER}"_"${ZIP_POSTFIX_DATE}"
-	if [[ $* =~ "out" ]]; then
-		( cd out && zip -q -0 "${ZIP_FMT}".zip . )
-	else
-		( cd out/ak3 && zip -r9 ../"${ZIP_FMT}".zip . -x '*.git*' )
-	fi
-	if [[ $* =~ "upload" ]]; then
-		(
-			cd out || exit
-			[[ $* =~ "tel" ]] && tg_sendDocument "${ZIP_FMT}.zip" "$(md5sum "${ZIP_FMT}.zip" | grep -oE "[0-9a-f]{32}")"
-			[[ $* =~ "osh" ]] && curl -sF f[]=@"${ZIP_FMT}".zip "https://oshi.at" | tee upload.log && tg_sendMessage "$(cat upload.log)"
-			[[ $* =~ "bas" ]] && curl -sT "${ZIP_FMT}".zip "https://bashupload.com" | tee upload.log && tg_sendMessage "$(grep wget upload.log | cut -c6-)"
-			[[ $* =~ "tmp" ]] && curl -sF files[]=@"${ZIP_FMT}".zip "https://tmp.ninja/upload.php?output=text" | tee upload.log && tg_sendMessage "$(cat upload.log)"
-			[[ $* =~ "pix" ]] && echo "https://pixeldrain.com/u/$(curl -sF file=@"${ZIP_FMT}".zip "https://pixeldrain.com/api/file" | grep -Po '(?<="id":")[^"]*')" | tee upload.log && tg_sendMessage "$(cat upload.log)"
-			rm upload.log
-		)
-	fi
-}
-
-tg_sendMessage "Build started"
-
-BLDHST="mochi" && DEVICE="vayu"
-if [[ $* =~ "gcc" ]]; then
-	IS_GCC=1
-	DOCKER_64=/usr/gcc64 && DOCKER_32=/usr/gcc32
-	LOCAL_64=~/.local/gcc64 && LOCAL_32=~/.local/gcc32
-	PRE_64="aarch64-elf" && PRE_32="arm-eabi"
-	if [[ $* =~ "host" ]]; then
-		DOCKER_64=/usr && DOCKER_32=/usr
-		PRE_64="aarch64-linux-gnu" && PRE_32="arm-linux-gnueabi"
-	fi
-	CC_CHOICE="$PRE_64-gcc"
-fi
-if [[ $* =~ "cla" ]]; then
-	IS_GCC=0
-	DOCKER_64=/usr/clang && DOCKER_32=/usr/clang
-	LOCAL_64=~/.local/clang && LOCAL_32=~/.local/clang
-	PRE_64="aarch64-linux-gnu" && PRE_32="arm-linux-gnueabi"
-	CC_CHOICE=clang
+if ! [ -d "$CLANG_DIR" ]; then
+    echo "Toolchain not found! Cloning to $CLANG_DIR..."
+    if ! git clone -q --depth=1 --single-branch https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/ -b master $TC_DIR; then
+        echo "Cloning failed! Aborting..."
+        exit 1
+    fi
 fi
 
-DEFCONFIG="vayu_defconfig"
-export KBUILD_BUILD_USER="$BLDHST"
-export KBUILD_BUILD_HOST="$BLDHST"
 
-[[ $(which ccache) ]] && CCACHE="$(which ccache) "
-[ -d $DOCKER_64 ] && CROSS=$DOCKER_64/bin || CROSS=$LOCAL_64/bin
-[ -d $DOCKER_32 ] && CROSSCOMPAT=$DOCKER_32/bin || CROSSCOMPAT=$LOCAL_32/bin
+# Colors
+NC='\033[0m'
+RED='\033[0;31m'
+LRD='\033[1;31m'
+LGR='\033[1;32m'
 
-if [ $IS_GCC -eq 1 ]; then
-	echo -e "$($CROSS/$PRE_64-gcc -v)\n$($CROSSCOMPAT/$PRE_32-gcc -v)"
+if [ "$VAYU_CONFIG_REGEN" = "true" ]; then
+    echo -e ${LGR} "Regenerating defconfig"
+    make ARCH=arm64 O=out vayu_defconfig
+    cp out/.config arch/arm64/configs/vayu_defconfig
 else
-	echo -e "$($CROSS/$CC_CHOICE -v)"
+    echo  -e ${RED} "Not regenerating config"
 fi
 
-[[ $* =~ "zip" ]] && kzip "$*" && exit
+if [ "$BUILD_WITH_KSU" = "true" ]; then
+    echo -e ${LGR} "BUILD_WITH_KSU is true. Applying KSU patch and running setup..."
+    kernel_name="Perfignite-KernelSUNext-vayu"
+    zip_name="$kernel_name-$(date +"%d%m%Y-%H%M").zip"
 
-kmake $DEFCONFIG
+    # Apply the patch
+    git am ksu.patch
 
-[[ $* =~ "llv" ]] && MAKEOPTS="$MAKEOPTS LD=ld.lld AR=llvm-ar NM=llvm-nm STRIP=llvm-strip OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf"
-[[ $* =~ "reg" ]] && cp out/.config arch/arm64/configs/$DEFCONFIG && exit
-[[ $* =~ "lld" ]] && MAKEOPTS="$MAKEOPTS LD=ld.lld"
-if [[ $* =~ "gcc" ]]; then
-	[[ $* =~ "lto" ]] && echo "CONFIG_LTO_GCC=y" >> out/.config
-	[[ $* =~ "gra" ]] && echo "CONFIG_GCC_GRAPHITE=y" >> out/.config
-fi
-if [[ $* =~ "cla" ]]; then
-	[[ $* =~ "lto" ]] && echo -e "CONFIG_LTO_CLANG=y\nCONFIG_THINLTO=n" >> out/.config
-	[[ $* =~ "thi" ]] && echo "CONFIG_THINLTO=y" >> out/.config
-	echo "CONFIG_CFI_CLANG=n" >> out/.config
-fi
+    # Run setup script from remote
+    curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
 
-[[ $* =~ "nofort" ]] && echo "CONFIG_FORTIFY_SOURCE=n" >> out/.config
-
-if [[ ${CI} ]]; then
-	if [[ $* =~ "cidebug" ]]; then
-		touch out/build.log
-		kmake
-	else
-		kmake &> out/build.log
-	fi
-	if [ ! -f out/arch/arm64/boot/Image ]; then
-		tg_sendDocument "out/build.log" "Build failed" && exit
-	else
-		tg_sendDocument "out/build.log" "Build done"
-		kzip "$*"
-	fi
 else
-	MAKE_CMDS=$(echo "$*" | grep -oE "mk_.*\$" | sed "s/mk_//g;s/\\$//g")
-	if [[ ${#MAKE_CMDS} -gt 0 ]]; then
-		kmake "$MAKE_CMDS"
-	else
-		kmake
-	fi
+    kernel_name="Perfignite-vayu"
+    zip_name="$kernel_name-$(date +"%d%m%Y-%H%M").zip"
+
+    echo  -e ${RED} "BUILD_WITH_KSU is not true. Skipping KSU setup."
+fi
+
+make_defconfig()
+{
+    START=$(date +"%s")
+    echo -e ${LGR} "        Generating Defconfig   ${NC}"
+    make -s ARCH=${ARCH} O=${objdir} ${CONFIG_FILE} -j$(nproc --all)
+}
+
+compile()
+{
+    cd ${kernel_dir}
+    echo -e ${LGR} "        Compiling kernel    ${NC}"
+    make -j$(nproc --all) \
+    O=out \
+    ARCH=${ARCH}\
+    CC="ccache clang" \
+    CLANG_TRIPLE="aarch64-linux-gnu-" \
+    CROSS_COMPILE="aarch64-linux-gnu-" \
+    CROSS_COMPILE_ARM32="arm-linux-gnueabi-" \
+    LLVM=1 \
+    LLVM_IAS=1
+}
+
+completion()
+{
+    cd ${objdir}
+    COMPILED_IMAGE=arch/arm64/boot/Image
+    COMPILED_DTBO=arch/arm64/boot/dtbo.img
+    if [[ -f ${COMPILED_IMAGE} && ${COMPILED_DTBO} ]]; then
+
+        git clone -q https://github.com/grepfox/AnyKernel3 -b vayu $anykernel
+
+        mv -f $ZIMAGE ${COMPILED_DTBO} $anykernel
+
+        cd $anykernel
+        find . -name "*.zip" -type f
+        find . -name "*.zip" -type f -delete
+        zip -r AnyKernel.zip *
+        mv AnyKernel.zip $zip_name
+        mv $anykernel/$zip_name $HOME/Documents/$zip_name
+        rm -rf $anykernel
+        END=$(date +"%s")
+        DIFF=$(($END - $START))
+        echo -e ${LGR} "         Kernel complied successfully!   ✅     ${NC}"
+        exit 0
+    else
+        echo -e ${RED} "         Build Failed    ❌     ${NC}"
+        exit 1
+    fi
+}
+make_defconfig
+compile
+completion
+cd ${kernel_dir}
+
+if [ "$BUILD_WITH_KSU" = "true" ]; then
+    echo -e ${RED} "Cleaning up KSU patch...  ${NC}"
+    rm -rf KernelSU-Next
+    git add . && git commit -m "ksu changes"
+    git reset --hard HEAD~1
 fi
