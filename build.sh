@@ -1,3 +1,5 @@
+clear
+
 #!/bin/bash
 kernel_dir="${PWD}"
 CCACHE=$(command -v ccache)
@@ -38,17 +40,17 @@ fi
 
 if [ "$BUILD_WITH_KSU" = "true" ]; then
     echo -e ${LGR} "BUILD_WITH_KSU is true. Applying KSU patch and running setup..."
-    kernel_name="Perfignite-KernelSUNext-vayu"
+    kernel_name="Mochi-KernelSUNext-vayu"
     zip_name="$kernel_name-$(date +"%d%m%Y-%H%M").zip"
 
     # Apply the patch
-    git am ksu.patch
+    curl -s https://raw.githubusercontent.com/lineage-vayu/kernel_xiaomi_sm8150/refs/heads/android-v/ksu.patch | git am
 
     # Run setup script from remote
     curl -LSs "https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/setup.sh" | bash -
 
 else
-    kernel_name="Perfignite-vayu"
+    kernel_name="Mochi-vayu"
     zip_name="$kernel_name-$(date +"%d%m%Y-%H%M").zip"
 
     echo  -e ${RED} "BUILD_WITH_KSU is not true. Skipping KSU setup."
