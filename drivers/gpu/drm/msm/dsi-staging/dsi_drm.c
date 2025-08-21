@@ -237,6 +237,22 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 									rc);
 }
 
+static int dsi_bridge_get_panel_info(struct drm_bridge *bridge, char *buf)
+{
+	int rc = 0;
+	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+
+	if (!c_bridge) {
+		pr_err("Invalid params\n");
+		return rc;
+	}
+
+	if (c_bridge->display->name)
+		return snprintf(buf, PAGE_SIZE, c_bridge->display->name);
+
+	return rc;
+}
+
 static void dsi_bridge_enable(struct drm_bridge *bridge)
 {
 	int rc = 0;
@@ -267,10 +283,6 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 			sde_connector_schedule_status_work(display->drm_conn,
 				true);
 	}
-
-#if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
-	dsi_display_esd_irq_ctrl(display, true);
-#endif
 }
 
 static void dsi_bridge_disable(struct drm_bridge *bridge)
@@ -293,10 +305,6 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	msm_drm_notifier_call_chain(MSM_DRM_R_EARLY_EVENT_BLANK, &notify_data);
 
 	display = c_bridge->display;
-
-#if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
-	dsi_display_esd_irq_ctrl(display, false);
-#endif
 
 	private_flags =
 		bridge->encoder->crtc->state->adjusted_mode.private_flags;
@@ -580,6 +588,7 @@ static const struct drm_bridge_funcs dsi_bridge_ops = {
 	.disable      = dsi_bridge_disable,
 	.post_disable = dsi_bridge_post_disable,
 	.mode_set     = dsi_bridge_mode_set,
+	.disp_get_panel_info = dsi_bridge_get_panel_info,
 };
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,

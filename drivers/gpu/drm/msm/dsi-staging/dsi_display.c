@@ -245,7 +245,7 @@ error:
 	return rc;
 }
 
-int dsi_display_cmd_engine_enable(struct dsi_display *display)
+static int dsi_display_cmd_engine_enable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -289,7 +289,7 @@ done:
 	return rc;
 }
 
-int dsi_display_cmd_engine_disable(struct dsi_display *display)
+static int dsi_display_cmd_engine_disable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -475,7 +475,7 @@ error:
 }
 
 /* Allocate memory for cmd dma tx buffer */
-int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
+static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 {
 	int rc = 0, cnt = 0;
 	struct dsi_display_ctrl *display_ctrl;
@@ -5046,29 +5046,7 @@ error:
 	return rc;
 }
 
-static ssize_t sysfs_fod_ui_read(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct dsi_display *display;
-	bool status;
-
-	display = dev_get_drvdata(dev);
-	if (!display) {
-		pr_err("Invalid display\n");
-		return -EINVAL;
-	}
-
-	status = atomic_read(&display->fod_ui);
-
-	return snprintf(buf, PAGE_SIZE, "%d\n", status);
-}
-
-static DEVICE_ATTR(fod_ui, 0444,
-			sysfs_fod_ui_read,
-			NULL);
-
 static struct attribute *display_fs_attrs[] = {
-	&dev_attr_fod_ui.attr,
 	NULL,
 };
 static struct attribute_group display_fs_attrs_group = {
@@ -5102,13 +5080,6 @@ static int dsi_display_sysfs_deinit(struct dsi_display *display)
 
 	return 0;
 
-}
-
-void dsi_display_set_fod_ui(struct dsi_display *display, bool status)
-{
-	struct device *dev = &display->pdev->dev;
-	atomic_set(&display->fod_ui, status);
-	sysfs_notify(&dev->kobj, NULL, "fod_ui");
 }
 
 /**
@@ -5407,7 +5378,6 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 	atomic_set(&display->clkrate_change_pending, 0);
-	atomic_set(&display->fod_ui, false);
 	(void)dsi_display_sysfs_deinit(display);
 	(void)dsi_display_debugfs_deinit(display);
 
@@ -5544,9 +5514,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	display->pdev = pdev;
 	display->boot_disp = boot_disp;
 	display->dsi_type = dsi_type;
-#if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
-	display->is_first_boot = true;
-#endif
 
 	dsi_display_parse_cmdline_topology(display, index);
 
@@ -7588,17 +7555,6 @@ int dsi_display_enable(struct dsi_display *display)
 
 		display->panel->panel_initialized = true;
 		pr_debug("cont splash enabled, display enable not required\n");
-
-#if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
-		if (display->panel->is_tddi_flag) {
-			rc = dsi_panel_lockdowninfo_param_read(display->panel);
-			if (!rc) {
-				pr_err("[%s] failed to read lockdowninfo para, rc=%d\n",
-					display->name, rc);
-			}
-		}
-#endif
-
 		return 0;
 	}
 
@@ -7878,30 +7834,6 @@ int dsi_display_unprepare(struct dsi_display *display)
 struct dsi_display *get_main_display(void) {
 	return primary_display;
 }
-
-#if defined(CONFIG_MACH_XIAOMI_VAYU) || defined(CONFIG_MACH_XIAOMI_NABU)
-int dsi_display_esd_irq_ctrl(struct dsi_display *display,
-			bool enable)
-{
-	int ret = 0;
-
-	if (!display) {
-		pr_err("Invalid parameters\n");
-		return -EINVAL;
-	}
-
-	mutex_lock(&display->display_lock);
-
-	ret = dsi_panel_esd_irq_ctrl(display->panel, enable);
-	if (ret)
-		pr_err("[%s] failed to set esd irq, rc=%d\n",
-				display->name, ret);
-
-	mutex_unlock(&display->display_lock);
-
-	return ret;
-}
-#endif
 
 static int __init dsi_display_register(void)
 {
