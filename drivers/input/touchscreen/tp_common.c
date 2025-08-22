@@ -14,7 +14,6 @@ struct kobject *touchpanel_kobj;
 
 TS_ENABLE_FOPS(double_tap)
 TS_ENABLE_FOPS(fod_status)
-TS_ENABLE_FOPS(pen)
 
 static int __init tp_common_init(void)
 {
