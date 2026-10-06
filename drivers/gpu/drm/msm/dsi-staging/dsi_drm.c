@@ -204,9 +204,10 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
-	if (c_bridge->dsi_mode.dsi_mode_flags &
+	if ((c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-		 DSI_MODE_FLAG_DYN_CLK)) {
+		 DSI_MODE_FLAG_DYN_CLK)) &&
+			dsi_panel_initialized(c_bridge->display->panel)) {
 		pr_debug("[%d] seamless pre-enable\n", c_bridge->id);
 		return;
 	}
@@ -405,6 +406,11 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 		return true;
 	}
 
+	if (display->is_cont_splash_enabled && crtc_state->active_changed) {
+		*adjusted_mode = crtc_state->crtc->mode;
+		return true;
+	}
+
 	convert_to_dsi_mode(mode, &dsi_mode);
 
 	/*
@@ -466,8 +472,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR)) &&
 			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS)) &&
 			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) &&
-			(!crtc_state->active_changed ||
-			 display->is_cont_splash_enabled))
+			(!crtc_state->active_changed))
 			dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
 
 		/* Reject seemless transition when active/connectors changed.*/
