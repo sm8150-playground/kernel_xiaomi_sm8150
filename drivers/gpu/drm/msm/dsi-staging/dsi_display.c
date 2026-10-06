@@ -4375,6 +4375,14 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	}
 
 	panel_mode = display->panel->cur_mode;
+	if (!panel_mode) {
+		panel_mode = kzalloc(sizeof(*panel_mode), GFP_KERNEL);
+		if (!panel_mode) {
+			rc = -ENOMEM;
+			goto error;
+		}
+		display->panel->cur_mode = panel_mode;
+	}
 	memcpy(panel_mode, dsi_mode, sizeof(*panel_mode));
 	/*
 	 * dsi_mode_flags flags are used to communicate with other drm driver
@@ -4586,11 +4594,16 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 
 	if (mode->dsi_mode_flags &
 			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
-		rc = dsi_display_dfps_update(display, mode);
-		if (rc) {
-			pr_err("[%s]DSI dfps update failed, rc=%d\n",
-					display->name, rc);
-			goto error;
+		if (dsi_panel_initialized(display->panel)) {
+			rc = dsi_display_dfps_update(display, mode);
+			if (rc) {
+				pr_err("[%s]DSI dfps update failed, rc=%d\n",
+						display->name, rc);
+				goto error;
+			}
+		} else {
+			mode->dsi_mode_flags &= ~(DSI_MODE_FLAG_DFPS |
+						  DSI_MODE_FLAG_VRR);
 		}
 
 		display_for_each_ctrl(i, display) {
@@ -6835,6 +6848,14 @@ int dsi_display_set_mode(struct dsi_display *display,
 	if (rc) {
 		pr_err("[%s] failed to set mode\n", display->name);
 		goto error;
+	}
+
+	if (!display->is_cont_splash_enabled &&
+			!dsi_panel_initialized(display->panel)) {
+		adj_mode.dsi_mode_flags &= ~(DSI_MODE_FLAG_DFPS |
+					     DSI_MODE_FLAG_VRR);
+		mode->dsi_mode_flags &= ~(DSI_MODE_FLAG_DFPS |
+					  DSI_MODE_FLAG_VRR);
 	}
 
 	if (!display->panel->cur_mode) {
